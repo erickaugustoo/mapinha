@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FipeErick — dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --surface:#fff; --border:#e4e7eb; --text:#1a1d21; --muted:#6b7280;
+    --up:#f59e0b; --dn:#3b82f6; --seq:#7c3aed; --accent:#2a78d6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1216; --surface:#171b21; --border:#2a2f37; --text:#e6e9ee; --muted:#9aa4b2;
+      --up:#fbbf24; --dn:#60a5fa; --seq:#a78bfa; --accent:#5598e7; }
+  }
+  :root[data-theme=dark]{ --bg:#0f1216; --surface:#171b21; --border:#2a2f37; --text:#e6e9ee;
+    --muted:#9aa4b2; --up:#fbbf24; --dn:#60a5fa; --seq:#a78bfa; --accent:#5598e7; }
+  :root[data-theme=light]{ --bg:#f6f7f9; --surface:#fff; --border:#e4e7eb; --text:#1a1d21;
+    --muted:#6b7280; --up:#f59e0b; --dn:#3b82f6; --seq:#7c3aed; --accent:#2a78d6; }
+  *{ box-sizing:border-box; } body{ margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+  header{ padding:12px 18px; border-bottom:1px solid var(--border); display:flex;
+    align-items:baseline; gap:12px; flex-wrap:wrap; }
+  header h1{ font-size:17px; margin:0; } header .sub{ color:var(--muted); font-size:12px; }
+  header a{ color:var(--accent); text-decoration:none; font-size:13px; margin-left:auto; }
+  .tiles{ display:flex; gap:10px; padding:12px 18px; flex-wrap:wrap; }
+  .tile{ background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:10px 14px; min-width:120px; }
+  .tile .v{ font-size:20px; font-weight:700; } .tile .l{ color:var(--muted); font-size:11px; }
+  .wrap{ display:grid; grid-template-columns: 1fr 1fr 420px; gap:14px; padding:0 18px 24px; align-items:start; }
+  @media (max-width:1100px){ .wrap{ grid-template-columns:1fr; } #mapwrap{ order:-1; } }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+  .card h2{ font-size:13px; margin:0 0 2px; } .card .cap{ color:var(--muted); font-size:11px; margin-bottom:8px; }
+  .tabs{ display:flex; gap:6px; margin-bottom:8px; }
+  .tabs button{ font-size:12px; padding:2px 10px; border-radius:999px; cursor:pointer;
+    border:1px solid var(--border); background:transparent; color:var(--muted); }
+  .tabs button.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .row{ display:grid; grid-template-columns: 132px 1fr auto; align-items:center; gap:8px;
+    padding:3px 4px; border-radius:6px; cursor:default; }
+  .row:hover{ background:rgba(127,127,127,.10); }
+  .row .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row .nm small{ color:var(--muted); }
+  .bar{ height:9px; border-radius:4px; position:relative; }
+  .bar .fill{ position:absolute; top:0; height:9px; border-radius:4px; }
+  .val{ font-variant-numeric:tabular-nums; text-align:right; font-weight:600; white-space:nowrap; color:var(--text); }
+  .legend{ font-size:11px; color:var(--muted); margin-top:8px; display:flex; gap:14px; }
+  .legend span::before{ content:''; display:inline-block; width:9px; height:9px; border-radius:2px;
+    margin-right:5px; vertical-align:-1px; }
+  .legend .lu::before{ background:var(--up); } .legend .ld::before{ background:var(--dn); }
+  #mapwrap{ position:sticky; top:12px; } #map{ height:460px; border-radius:12px; border:1px solid var(--border); }
+  #mapcap{ color:var(--muted); font-size:11px; margin-top:6px; min-height:16px; }
+  .toggle{ cursor:pointer; color:var(--muted); border:1px solid var(--border); border-radius:8px;
+    padding:1px 8px; font-size:12px; background:transparent; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 FipeErick — dashboard</h1>
+  <span class="sub" id="ref"></span>
+  <button class="toggle" onclick="troca()">◐ tema</button>
+  <a href="./index.html">← voltar ao mapa</a>
+</header>
+<div class="tiles" id="tiles"></div>
+<div class="wrap">
+  <div class="card" id="c-valoriz">
+    <h2>Valorização por bairro</h2>
+    <div class="tabs" id="tabs"></div>
+    <div class="cap" id="cap-val"></div>
+    <div style="font-weight:600;font-size:12px;margin:4px 0 2px">🔥 Mais valorizaram</div>
+    <div id="sobe"></div>
+    <div style="font-weight:600;font-size:12px;margin:10px 0 2px">🧊 Mais caíram</div>
+    <div id="cai"></div>
+    <div class="legend"><span class="lu">aquecendo (subiu)</span><span class="ld">esfriando (caiu)</span></div>
+  </div>
+  <div class="card">
+    <h2>Preço por m²</h2>
+    <div class="cap">mediana de R$/m² dos anúncios do bairro (amostra ≥ 8)</div>
+    <div style="font-weight:600;font-size:12px;margin:4px 0 2px">💎 Mais caros</div>
+    <div id="caros"></div>
+    <div style="font-weight:600;font-size:12px;margin:10px 0 2px">🪙 Mais baratos</div>
+    <div id="baratos"></div>
+  </div>
+  <div id="mapwrap"><div id="map"></div><div id="mapcap">passe o mouse num bairro pra ver onde é</div></div>
+</div>
+<script>
+const D = {"quando": "01/08/2026 16:18", "meta": {"referencia": "01/08/2026", "bairros": 371, "m2_mediana_geral": 6043, "janela_dias": 7}, "caros": [{"nome": "Cerqueira Cesar", "m2": 21200, "n": 93, "p25": 18161, "p75": 27106, "lat": -23.5610386, "lon": -46.6657633, "var": {"24h": 0.0, "7d": 0.0, "30d": -0.5}}, {"nome": "Pinheiros", "m2": 20370, "n": 363, "p25": 16923, "p75": 23452, "lat": -23.5672842, "lon": -46.701939, "var": {"24h": 0.0, "7d": 0.0, "30d": -2.1}}, {"nome": "Jardim Europa", "m2": 20245, "n": 8, "p25": 16976, "p75": 26829, "lat": -23.5737047, "lon": -46.6823072, "var": {"24h": 0.0, "7d": -0.4, "30d": -6.3}}, {"nome": "Vila Pompéia", "m2": 19501, "n": 12, "p25": 15357, "p75": 22692, "lat": -23.538186, "lon": -46.6890229, "var": {"24h": 0.0, "7d": 0.0, "30d": 7.9}}, {"nome": "Jardins", "m2": 18710, "n": 668, "p25": 15172, "p75": 22219, "lat": null, "lon": null, "var": {"24h": 0.4, "7d": 1.1, "30d": -2.6}}, {"nome": "Vila Nova Conceição", "m2": 18705, "n": 546, "p25": 15895, "p75": 21699, "lat": -23.5918073, "lon": -46.666124, "var": {"24h": 0.0, "7d": -0.2, "30d": -14.1}}, {"nome": "Perdizes", "m2": 18698, "n": 180, "p25": 15237, "p75": 20903, "lat": -23.5379295, "lon": -46.6806705, "var": {"24h": 0.0, "7d": -0.3, "30d": 3.5}}, {"nome": "Itaim Bibi", "m2": 18372, "n": 519, "p25": 14500, "p75": 23188, "lat": -23.5843807, "lon": -46.6784441, "var": {"24h": -0.4, "7d": -0.8, "30d": -13.8}}, {"nome": "Jardim Paulista", "m2": 18214, "n": 529, "p25": 14667, "p75": 22296, "lat": -23.5652185, "lon": -46.6601846, "var": {"24h": 0.4, "7d": 0.8, "30d": -2.9}}, {"nome": "Jardim Paulistano", "m2": 18023, "n": 22, "p25": 16338, "p75": 21860, "lat": -23.4519655, "lon": -46.7093664, "var": {"24h": 0.0, "7d": -0.3, "30d": -25.5}}, {"nome": "Vila Olimpia", "m2": 17955, "n": 1109, "p25": 14031, "p75": 21139, "lat": -23.5940375, "lon": -46.6842299, "var": {"24h": 0.0, "7d": -0.0, "30d": -6.0}}, {"nome": "Vila Madalena", "m2": 17846, "n": 86, "p25": 16094, "p75": 20417, "lat": -23.5464956, "lon": -46.6911243, "var": {"24h": 0.0, "7d": -3.3, "30d": 0.0}}, {"nome": "Consolacao", "m2": 17727, "n": 329, "p25": 15313, "p75": 19838, "lat": -23.557818, "lon": -46.6605373, "var": {"24h": 0.0, "7d": -0.3, "30d": -1.5}}, {"nome": "Moema", "m2": 17692, "n": 905, "p25": 14615, "p75": 21000, "lat": -23.597085, "lon": -46.6628884, "var": {"24h": 0.0, "7d": -0.2, "30d": -2.4}}], "baratos": [{"nome": "Jardim Novo Parelheiros", "m2": 1700, "n": 9, "p25": 1518, "p75": 2846, "lat": null, "lon": null, "var": {"24h": -6.7, "7d": -6.7}}, {"nome": "Jardim São Judas Tadeu", "m2": 1760, "n": 47, "p25": 1440, "p75": 3889, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0}}, {"nome": "Jardim Noronha", "m2": 1960, "n": 9, "p25": 1593, "p75": 2514, "lat": null, "lon": null, "var": {"24h": 15.0, "7d": 15.0}}, {"nome": "Vila Natal", "m2": 2172, "n": 21, "p25": 1858, "p75": 3164, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0}}, {"nome": "Jardim Shangrilá (Zona Sul)", "m2": 2268, "n": 8, "p25": 2122, "p75": 2964, "lat": null, "lon": null, "var": {"24h": -0.8, "7d": -0.8}}, {"nome": "Parque Grajaú", "m2": 2500, "n": 15, "p25": 1804, "p75": 3000, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0}}, {"nome": "Jardim Santa Fé (Zona Sul)", "m2": 2500, "n": 15, "p25": 2037, "p75": 3750, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0}}, {"nome": "Engenheiro Marsilac", "m2": 2510, "n": 10, "p25": 1528, "p75": 3095, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0}}, {"nome": "Balneário São José", "m2": 2529, "n": 22, "p25": 1781, "p75": 3219, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0}}, {"nome": "Jardim São Rafael", "m2": 2640, "n": 9, "p25": 1844, "p75": 3049, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": -1.3}}, {"nome": "Parelheiros", "m2": 2721, "n": 9, "p25": 2130, "p75": 3418, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0}}, {"nome": "Chácara Santana", "m2": 2742, "n": 8, "p25": 2269, "p75": 7086, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": -2.8}}, {"nome": "Jardim Bela Vista (Zona Sul)", "m2": 2780, "n": 16, "p25": 1548, "p75": 3854, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": -3.1}}, {"nome": "Parque Regina", "m2": 2786, "n": 12, "p25": 2344, "p75": 4104, "lat": -23.5764358, "lon": -46.7302348, "var": {"24h": 0.0, "7d": 0.0, "30d": -24.0}}], "valoriz": {"24h": {"sobe": [{"nome": "Jardim Angelina", "m2": 3213, "n": 8, "p25": 2473, "p75": 5375, "lat": null, "lon": null, "var": {"24h": 18.5, "7d": 18.5}}, {"nome": "Jardim Noronha", "m2": 1960, "n": 9, "p25": 1593, "p75": 2514, "lat": null, "lon": null, "var": {"24h": 15.0, "7d": 15.0}}, {"nome": "Vila Congonhas", "m2": 8314, "n": 115, "p25": 6467, "p75": 10760, "lat": -23.6274146, "lon": -46.655561, "var": {"24h": 8.1, "7d": 9.3, "30d": 0.4}}, {"nome": "Recanto Campo Belo", "m2": 2960, "n": 19, "p25": 1842, "p75": 3900, "lat": null, "lon": null, "var": {"24h": 4.2, "7d": 4.2}}, {"nome": "Instituto de Previdencia", "m2": 7852, "n": 31, "p25": 4176, "p75": 12614, "lat": -23.6590814, "lon": -46.5306582, "var": {"24h": 2.6, "7d": 2.6, "30d": 15.8}}, {"nome": "Nova Piraju", "m2": 10357, "n": 48, "p25": 7206, "p75": 13613, "lat": null, "lon": null, "var": {"24h": 2.1, "7d": 2.1, "30d": 4.5}}, {"nome": "Vila Califórnia", "m2": 4722, "n": 13, "p25": 3171, "p75": 6250, "lat": null, "lon": null, "var": {"24h": 1.5, "7d": 1.5, "30d": -9.2}}, {"nome": "Jardim Casablanca", "m2": 6096, "n": 34, "p25": 4232, "p75": 7742, "lat": -23.6051511, "lon": -46.7746842, "var": {"24h": 1.3, "7d": -1.3, "30d": -1.6}}, {"nome": "Butanta", "m2": 6862, "n": 108, "p25": 5124, "p75": 10910, "lat": -23.5693582, "lon": -46.7278225, "var": {"24h": 1.3, "7d": 2.2, "30d": 1.3}}, {"nome": "Jardim Vazani", "m2": 8327, "n": 75, "p25": 6716, "p75": 10380, "lat": null, "lon": null, "var": {"24h": 0.7, "7d": 0.3, "30d": -11.4}}, {"nome": "Jardim Ester Yolanda", "m2": 4054, "n": 9, "p25": 3018, "p75": 4535, "lat": null, "lon": null, "var": {"24h": 0.7, "7d": 0.7, "30d": 0.0}}, {"nome": "Jardim Umuarama", "m2": 6026, "n": 143, "p25": 4667, "p75": 7500, "lat": -23.5568045, "lon": -46.7695159, "var": {"24h": 0.6, "7d": 3.3, "30d": -9.5}}], "cai": [{"nome": "Vila Gomes", "m2": 6493, "n": 11, "p25": 4500, "p75": 10000, "lat": -23.667498, "lon": -46.4306046, "var": {"24h": -8.9, "7d": -19.3, "30d": 5.7}}, {"nome": "Jardim Novo Parelheiros", "m2": 1700, "n": 9, "p25": 1518, "p75": 2846, "lat": null, "lon": null, "var": {"24h": -6.7, "7d": -6.7}}, {"nome": "Jardim Maria Duarte", "m2": 5309, "n": 24, "p25": 4292, "p75": 6172, "lat": -23.6338993, "lon": -47.1558876, "var": {"24h": -3.6, "7d": -5.5, "30d": -8.1}}, {"nome": "Parque Brasil", "m2": 4429, "n": 19, "p25": 3062, "p75": 6375, "lat": null, "lon": null, "var": {"24h": -2.8, "7d": -2.8}}, {"nome": "Capela do Socorro", "m2": 6312, "n": 11, "p25": 4821, "p75": 7054, "lat": null, "lon": null, "var": {"24h": -2.7, "7d": -5.3, "30d": -10.5}}, {"nome": "Vila Socorro", "m2": 8100, "n": 33, "p25": 7295, "p75": 10029, "lat": -23.6656757, "lon": -46.7161385, "var": {"24h": -2.3, "7d": -0.1, "30d": -6.5}}, {"nome": "Jardim Taboao", "m2": 5307, "n": 76, "p25": 3976, "p75": 7048, "lat": -23.6760129, "lon": -46.6083066, "var": {"24h": -1.7, "7d": -1.4, "30d": 2.0}}, {"nome": "Vila Marari", "m2": 5267, "n": 53, "p25": 3980, "p75": 6856, "lat": null, "lon": null, "var": {"24h": -1.5, "7d": 3.0, "30d": 1.9}}, {"nome": "Jardim Esmeralda", "m2": 6434, "n": 52, "p25": 5031, "p75": 7774, "lat": -23.5768096, "lon": -46.7392136, "var": {"24h": -1.4, "7d": -3.3, "30d": -2.4}}, {"nome": "Cidade Ademar", "m2": 6042, "n": 87, "p25": 5000, "p75": 7154, "lat": null, "lon": null, "var": {"24h": -0.9, "7d": -1.8, "30d": -2.4}}, {"nome": "Panamby", "m2": 7000, "n": 692, "p25": 5796, "p75": 8389, "lat": -23.6365497, "lon": -46.7298722, "var": {"24h": -0.8, "7d": -0.8, "30d": -11.7}}, {"nome": "Vila Das Belezas", "m2": 6980, "n": 108, "p25": 6164, "p75": 8926, "lat": -23.6402476, "lon": -46.7457694, "var": {"24h": -0.8, "7d": -4.8, "30d": -12.5}}], "base": "2026-07-31", "dias": 1, "n_sobe": 32, "n_cai": 24, "n_total": 293}, "7d": {"sobe": [{"nome": "Jardim Oriental", "m2": 4745, "n": 9, "p25": 3200, "p75": 5587, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 37.3}}, {"nome": "Caxingui", "m2": 9794, "n": 13, "p25": 7737, "p75": 13706, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 23.1, "30d": 28.4}}, {"nome": "Jardim Angelina", "m2": 3213, "n": 8, "p25": 2473, "p75": 5375, "lat": null, "lon": null, "var": {"24h": 18.5, "7d": 18.5}}, {"nome": "Jardim Noronha", "m2": 1960, "n": 9, "p25": 1593, "p75": 2514, "lat": null, "lon": null, "var": {"24h": 15.0, "7d": 15.0}}, {"nome": "Parque Colonial", "m2": 5775, "n": 31, "p25": 3433, "p75": 10600, "lat": -23.7263545, "lon": -46.6841448, "var": {"24h": 0.0, "7d": 9.6, "30d": -40.7}}, {"nome": "Vila Gea", "m2": 9375, "n": 49, "p25": 7814, "p75": 9789, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 9.4, "30d": 0.0}}, {"nome": "Vila Congonhas", "m2": 8314, "n": 115, "p25": 6467, "p75": 10760, "lat": -23.6274146, "lon": -46.655561, "var": {"24h": 8.1, "7d": 9.3, "30d": 0.4}}, {"nome": "Vila Santa Maria", "m2": 4155, "n": 10, "p25": 3358, "p75": 4925, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 9.1}}, {"nome": "Jabaquara", "m2": 6633, "n": 35, "p25": 4294, "p75": 9487, "lat": -23.6463382, "lon": -46.6410462, "var": {"24h": 0.0, "7d": 8.1, "30d": -17.5}}, {"nome": "Vila Inglesa", "m2": 6140, "n": 91, "p25": 5000, "p75": 7681, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 6.8, "30d": 5.0}}, {"nome": "Jardim Iracema", "m2": 5342, "n": 14, "p25": 4212, "p75": 5728, "lat": -23.5111388, "lon": -46.8627345, "var": {"24h": 0.0, "7d": 5.7, "30d": 8.2}}, {"nome": "Brás", "m2": 10460, "n": 11, "p25": 9312, "p75": 11228, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 5.2, "30d": 5.2}}], "cai": [{"nome": "Ipiranga", "m2": 8704, "n": 105, "p25": 6894, "p75": 13267, "lat": -23.5892725, "lon": -46.6061621, "var": {"24h": 0.0, "7d": -33.7, "30d": -33.5}}, {"nome": "Bom Retiro", "m2": 9918, "n": 9, "p25": 9048, "p75": 13310, "lat": -23.5251634, "lon": -46.6381644, "var": {"24h": 0.0, "7d": -19.6, "30d": -19.6}}, {"nome": "Vila Gomes", "m2": 6493, "n": 11, "p25": 4500, "p75": 10000, "lat": -23.667498, "lon": -46.4306046, "var": {"24h": -8.9, "7d": -19.3, "30d": 5.7}}, {"nome": "Jardim Dom Bosco", "m2": 10109, "n": 31, "p25": 6463, "p75": 12185, "lat": -23.536461, "lon": -46.4423516, "var": {"24h": 0.0, "7d": -11.5, "30d": -17.3}}, {"nome": "Jardim Peri Peri", "m2": 7231, "n": 47, "p25": 5156, "p75": 10294, "lat": -23.462159, "lon": -46.670131, "var": {"24h": 0.0, "7d": -9.5, "30d": 13.3}}, {"nome": "Santa Cecília", "m2": 13667, "n": 31, "p25": 12308, "p75": 19048, "lat": -23.5296595, "lon": -46.6518939, "var": {"24h": 0.0, "7d": -7.0, "30d": 2.5}}, {"nome": "Jardim Novo Parelheiros", "m2": 1700, "n": 9, "p25": 1518, "p75": 2846, "lat": null, "lon": null, "var": {"24h": -6.7, "7d": -6.7}}, {"nome": "Jardim Santo Amaro", "m2": 11806, "n": 25, "p25": 10740, "p75": 13719, "lat": -23.6521728, "lon": -46.6960195, "var": {"24h": 0.0, "7d": -6.6, "30d": 18.4}}, {"nome": "Lapa", "m2": 11011, "n": 9, "p25": 9012, "p75": 12669, "lat": -23.5215756, "lon": -46.7043491, "var": {"24h": 0.0, "7d": -6.3, "30d": 0.0}}, {"nome": "Fazenda Morumbi", "m2": 5670, "n": 81, "p25": 4768, "p75": 8279, "lat": -23.6128943, "lon": -46.7139544, "var": {"24h": 0.4, "7d": -6.2, "30d": -7.0}}, {"nome": "Jardim Maria Duarte", "m2": 5309, "n": 24, "p25": 4292, "p75": 6172, "lat": -23.6338993, "lon": -47.1558876, "var": {"24h": -3.6, "7d": -5.5, "30d": -8.1}}, {"nome": "Capela do Socorro", "m2": 6312, "n": 11, "p25": 4821, "p75": 7054, "lat": null, "lon": null, "var": {"24h": -2.7, "7d": -5.3, "30d": -10.5}}], "base": "2026-07-25", "dias": 7, "n_sobe": 85, "n_cai": 101, "n_total": 289}, "30d": {"sobe": [{"nome": "Caxingui", "m2": 9794, "n": 13, "p25": 7737, "p75": 13706, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 23.1, "30d": 28.4}}, {"nome": "Jardim Sao Luiz", "m2": 6141, "n": 26, "p25": 3927, "p75": 7877, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 3.7, "30d": 26.4}}, {"nome": "Jardim Santo Amaro", "m2": 11806, "n": 25, "p25": 10740, "p75": 13719, "lat": -23.6521728, "lon": -46.6960195, "var": {"24h": 0.0, "7d": -6.6, "30d": 18.4}}, {"nome": "Balneário Mar Paulista", "m2": 3061, "n": 8, "p25": 2406, "p75": 6095, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0, "30d": 17.5}}, {"nome": "Jardim Santo Antoninho", "m2": 5779, "n": 30, "p25": 4273, "p75": 10244, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": -2.5, "30d": 16.6}}, {"nome": "Jardim Panorama (Zona Sul)", "m2": 16987, "n": 24, "p25": 13462, "p75": 22298, "lat": -23.4783511, "lon": -46.608069, "var": {"24h": 0.0, "7d": -1.5, "30d": 16.0}}, {"nome": "Cidade Jardim", "m2": 16346, "n": 40, "p25": 14263, "p75": 19410, "lat": -23.5852388, "lon": -46.6911827, "var": {"24h": 0.0, "7d": 1.2, "30d": 15.9}}, {"nome": "Instituto de Previdencia", "m2": 7852, "n": 31, "p25": 4176, "p75": 12614, "lat": -23.6590814, "lon": -46.5306582, "var": {"24h": 2.6, "7d": 2.6, "30d": 15.8}}, {"nome": "Cidade dos Bandeirantes", "m2": 6265, "n": 14, "p25": 4371, "p75": 9233, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.2, "30d": 15.4}}, {"nome": "Vila São Pedro", "m2": 6000, "n": 51, "p25": 4867, "p75": 7506, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.1, "30d": 15.1}}, {"nome": "Vila Friburgo", "m2": 5556, "n": 11, "p25": 3867, "p75": 6641, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.0, "30d": 15.0}}, {"nome": "Vila Tramontano", "m2": 8940, "n": 12, "p25": 8402, "p75": 9611, "lat": -23.619588, "lon": -46.7045286, "var": {"24h": 0.0, "7d": 0.0, "30d": 14.5}}], "cai": [{"nome": "Parque Colonial", "m2": 5775, "n": 31, "p25": 3433, "p75": 10600, "lat": -23.7263545, "lon": -46.6841448, "var": {"24h": 0.0, "7d": 9.6, "30d": -40.7}}, {"nome": "Ipiranga", "m2": 8704, "n": 105, "p25": 6894, "p75": 13267, "lat": -23.5892725, "lon": -46.6061621, "var": {"24h": 0.0, "7d": -33.7, "30d": -33.5}}, {"nome": "Chácara Monte Alegre", "m2": 5867, "n": 8, "p25": 5125, "p75": 10000, "lat": -23.644373, "lon": -46.6769894, "var": {"24h": 0.0, "7d": 0.0, "30d": -28.2}}, {"nome": "Jardim Paulistano", "m2": 18023, "n": 22, "p25": 16338, "p75": 21860, "lat": -23.4519655, "lon": -46.7093664, "var": {"24h": 0.0, "7d": -0.3, "30d": -25.5}}, {"nome": "Parque Regina", "m2": 2786, "n": 12, "p25": 2344, "p75": 4104, "lat": -23.5764358, "lon": -46.7302348, "var": {"24h": 0.0, "7d": 0.0, "30d": -24.0}}, {"nome": "Rio Pequeno", "m2": 5449, "n": 23, "p25": 4492, "p75": 7007, "lat": -23.5685049, "lon": -46.756857, "var": {"24h": 0.0, "7d": -3.3, "30d": -19.7}}, {"nome": "Bom Retiro", "m2": 9918, "n": 9, "p25": 9048, "p75": 13310, "lat": -23.5251634, "lon": -46.6381644, "var": {"24h": 0.0, "7d": -19.6, "30d": -19.6}}, {"nome": "Jabaquara", "m2": 6633, "n": 35, "p25": 4294, "p75": 9487, "lat": -23.6463382, "lon": -46.6410462, "var": {"24h": 0.0, "7d": 8.1, "30d": -17.5}}, {"nome": "Americanópolis", "m2": 4103, "n": 14, "p25": 2776, "p75": 6821, "lat": -23.6815231, "lon": -46.6554176, "var": {"24h": 0.0, "7d": 0.0, "30d": -17.4}}, {"nome": "Jardim Dom Bosco", "m2": 10109, "n": 31, "p25": 6463, "p75": 12185, "lat": -23.536461, "lon": -46.4423516, "var": {"24h": 0.0, "7d": -11.5, "30d": -17.3}}, {"nome": "Várzea de Baixo", "m2": 9691, "n": 22, "p25": 9088, "p75": 10837, "lat": null, "lon": null, "var": {"24h": 0.0, "7d": 0.9, "30d": -16.8}}, {"nome": "Jardim Petrópolis", "m2": 6567, "n": 26, "p25": 5373, "p75": 8462, "lat": -23.6316703, "lon": -46.6839133, "var": {"24h": 0.0, "7d": -0.2, "30d": -16.5}}], "base": "2026-07-11", "dias": 21, "n_sobe": 80, "n_cai": 127, "n_total": 225}}, "janelas": {"24h": {"base": "2026-07-31", "dias": 1}, "7d": {"base": "2026-07-25", "dias": 7}, "30d": {"base": "2026-07-11", "dias": 21}}};
+const fmt = v => v==null?'—':'R$ '+Math.round(v).toLocaleString('pt-BR');
+const sig = v => (v>=0?'+':'')+v.toFixed(1)+'%';
+document.getElementById('ref').textContent =
+  `ref ${D.meta.referencia||''} · ${D.meta.bairros||0} bairros · mediana geral ${fmt(D.meta.m2_mediana_geral)}/m² · atualizado ${D.quando}`;
+
+// ----- mapa (locator) -----
+const map = L.map('map', {preferCanvas:true, zoomControl:true}).setView([-23.62,-46.65], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom:18, attribution:'© OpenStreetMap'}).addTo(map);
+let pino = null;
+function acende(b, cor){
+  document.getElementById('mapcap').textContent =
+    b.lat==null ? `${b.nome}: sem coordenada` :
+    `${b.nome} · ${fmt(b.m2)}/m² · ${b.n} anúncios`;
+  if (b.lat==null) return;
+  if (pino) map.removeLayer(pino);
+  pino = L.circleMarker([b.lat,b.lon], {radius:11, color:cor, weight:3, fillColor:cor, fillOpacity:.35}).addTo(map);
+  map.panTo([b.lat,b.lon], {animate:true});
+}
+
+// ----- linhas de ranking -----
+function linhaValoriz(b, lbl, maxAbs){
+  const v = b.var[lbl], up = v>=0, cor = up?'var(--up)':'var(--dn)';
+  const w = Math.max(4, Math.abs(v)/maxAbs*100);   // metade da barra p/ cada lado
+  const div = document.createElement('div');
+  div.className='row';
+  div.innerHTML = `<div class="nm">${b.nome}<br><small>${fmt(b.m2)}/m²</small></div>
+    <div class="bar" style="background:transparent">
+      <div style="position:absolute;left:50%;top:-2px;height:13px;border-left:1px solid var(--border)"></div>
+      <div class="fill" style="${up?'left:50%':'right:50%'};width:${w/2}%;background:${cor}"></div></div>
+    <div class="val ${up?'up':'dn'}">${sig(v)}</div>`;
+  div.onmouseenter = ()=>acende(b, cor);
+  return div;
+}
+function linhaPreco(b, max, cor){
+  const w = Math.max(4, b.m2/max*100);
+  const div = document.createElement('div');
+  div.className='row';
+  div.innerHTML = `<div class="nm">${b.nome}<br><small>${b.n} anúncios</small></div>
+    <div class="bar" style="background:rgba(127,127,127,.12)"><div class="fill" style="left:0;width:${w}%;background:${cor}"></div></div>
+    <div class="val">${fmt(b.m2)}</div>`;
+  div.onmouseenter = ()=>acende(b, cor);
+  return div;
+}
+function encher(el, arr, fn){ el.innerHTML=''; arr.forEach(b=>el.appendChild(fn(b))); }
+
+// ----- tiles -----
+function tiles(lbl){
+  const w = D.valoriz[lbl];
+  const t = [
+    ['bairros mapeados', D.meta.bairros||0, ''],
+    ['mediana R$/m²', fmt(D.meta.m2_mediana_geral), ''],
+  ];
+  if (w) { t.push(['valorizaram ('+lbl+')', w.n_sobe, 'de '+w.n_total]);
+           t.push(['caíram ('+lbl+')', w.n_cai, 'de '+w.n_total]); }
+  document.getElementById('tiles').innerHTML = t.map(([l,v,s])=>
+    `<div class="tile"><div class="v">${v}</div><div class="l">${l}${s?' · '+s:''}</div></div>`).join('');
+}
+
+// ----- valorização com abas -----
+let janela = Object.keys(D.valoriz)[0] || null;
+function renderValoriz(){
+  if (!janela){ document.getElementById('cap-val').textContent='sem histórico suficiente ainda'; return; }
+  const w = D.valoriz[janela];
+  const maxAbs = Math.max(2, ...w.sobe.concat(w.cai).map(b=>Math.abs(b.var[janela])));
+  document.getElementById('cap-val').textContent =
+    `variação do R$/m² mediano vs ${w.dias} dia(s) atrás (base ${w.base.split('-').reverse().join('/')})`;
+  encher(document.getElementById('sobe'), w.sobe, b=>linhaValoriz(b, janela, maxAbs));
+  encher(document.getElementById('cai'),  w.cai,  b=>linhaValoriz(b, janela, maxAbs));
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on', x.dataset.j===janela));
+  tiles(janela);
+}
+document.getElementById('tabs').innerHTML = Object.keys(D.valoriz).map(j=>{
+  const rot = {'24h':'24 horas','7d':'7 dias','30d':'30 dias'}[j]||j;
+  return `<button data-j="${j}">${rot}</button>`;}).join('') || '<span class="cap">sem janelas</span>';
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{janela=b.dataset.j; renderValoriz();});
+
+// ----- preço -----
+const maxCaro = Math.max(...D.caros.map(b=>b.m2));
+encher(document.getElementById('caros'), D.caros, b=>linhaPreco(b, maxCaro, 'var(--seq)'));
+encher(document.getElementById('baratos'), D.baratos, b=>linhaPreco(b, maxCaro, 'var(--seq)'));
+
+// ----- tema -----
+function troca(){
+  const cur = document.documentElement.getAttribute('data-theme');
+  const dark = cur ? cur==='dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', dark?'light':'dark');
+}
+renderValoriz(); tiles(janela);
+setTimeout(()=>map.invalidateSize(), 200);
+</script>
+</body>
+</html>
